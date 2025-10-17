@@ -20,6 +20,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "dotenv": "^17.2.3"
+    "axios": "^1.12.2",
+    "dotenv": "^17.2.3",
+    "ethers": "^6.15.0"
   }
 }
