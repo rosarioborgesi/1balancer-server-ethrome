@@ -1,7 +1,7 @@
-import { FusionSDK, NetworkEnum, OrderStatus, PrivateKeyProviderConnector, Web3Like, } from "@1inch/fusion-sdk";
+import { FusionSDK, NetworkEnum, OrderInfo, OrderStatus, PrivateKeyProviderConnector, Web3Like, } from "@1inch/fusion-sdk";
 import { computeAddress, JsonRpcProvider } from "ethers";
 import { config } from "../config";
-import { getTokenAddress } from "../utils";
+import { getAxiosErrorMessage, getTokenAddress } from "../utils";
 
 const PRIVATE_KEY = config.privateKey;
 const NODE_URL = config.nodeUrl;
@@ -71,30 +71,45 @@ export async function swap(fromToken: "WETH" | "USDC", toToken: "WETH" | "USDC",
 
     const start = Date.now();
 
+    // Retry loop with 30-second delays
     while (true) {
-        try {
-            const data = await sdk.getOrderStatus(info.orderHash);
-
-            if (data.status === OrderStatus.Filled) {
-                //console.log('fills', data.fills);
-                console.log("Order Filled with tx hash: ", data.fills[0].txHash);
-                break;
-            }
-
-            if (data.status === OrderStatus.Expired) {
-                console.log('Order Expired');
-                break;
-            }
-
-            if (data.status === OrderStatus.Cancelled) {
-                console.log('Order Cancelled');
-                break;
-            }
-        } catch (e) {
-            console.log(e);
+        const isComplete = await checkOrderStatus(info);
+        if (isComplete) {
+            break;
         }
 
+        console.log('Order still pending, waiting 30 seconds before next check...');
+        await new Promise(resolve => setTimeout(resolve, 30000)); // Wait 30 seconds
     }
 
     console.log('Order executed for', (Date.now() - start) / 1000, 'sec');
 }
+
+
+// Retry mechanism with 30-second intervals
+const checkOrderStatus = async (info: OrderInfo): Promise<boolean> => {
+    try {
+        const data = await sdk.getOrderStatus(info.orderHash);
+
+        if (data.status === OrderStatus.Filled) {
+            //console.log('fills', data.fills);
+            console.log("Order Filled with tx hash: ", data.fills[0].txHash);
+            return true; // Order completed successfully
+        }
+
+        if (data.status === OrderStatus.Expired) {
+            console.log('Order Expired');
+            return true; // Order completed (expired)
+        }
+
+        if (data.status === OrderStatus.Cancelled) {
+            console.log('Order Cancelled');
+            return true; // Order completed (cancelled)
+        }
+
+        return false; // Order still pending, continue checking
+    } catch (e) {
+        console.log(getAxiosErrorMessage(e));
+        return false; // Error occurred, retry after delay
+    }
+};
