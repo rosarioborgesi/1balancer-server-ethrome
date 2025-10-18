@@ -3,7 +3,6 @@ import { computeAddress, JsonRpcProvider } from "ethers";
 import { config } from "../config";
 import { getAxiosErrorMessage, getTokenAddress } from "../utils";
 
-const PRIVATE_KEY = config.privateKey;
 const NODE_URL = config.nodeUrl;
 const DEV_PORTAL_API_TOKEN = config.devPortalApiToken;
 
@@ -20,29 +19,33 @@ const ethersProviderConnector: Web3Like = {
     extend(): void { }
 }
 
-const connector = new PrivateKeyProviderConnector(
-    PRIVATE_KEY,
-    ethersProviderConnector
-)
+function createSDK(privateKey: string) {
+    const connector = new PrivateKeyProviderConnector(
+        privateKey,
+        ethersProviderConnector
+    )
 
-const sdk = new FusionSDK({
-    url: 'https://api.1inch.com/fusion',
-    network: NetworkEnum.COINBASE,
-    blockchainProvider: connector,
-    authKey: DEV_PORTAL_API_TOKEN
-})
+    return new FusionSDK({
+        url: 'https://api.1inch.com/fusion',
+        network: NetworkEnum.COINBASE,
+        blockchainProvider: connector,
+        authKey: DEV_PORTAL_API_TOKEN
+    })
+}
 
 // Swap WETH - USDC
-export async function swap(fromToken: "WETH" | "USDC", toToken: "WETH" | "USDC", amountWei: string) {
+export async function swap(fromToken: "WETH" | "USDC", toToken: "WETH" | "USDC", amountWei: string, privateKey: string) {
     console.log(new Date().toISOString(), 'Calling API: ', 'https://api.1inch.com/fusion');
     const fromTokenAddress = getTokenAddress(fromToken);
     const toTokenAddress = getTokenAddress(toToken);
+
+    const sdk = createSDK(privateKey);
 
     const params = {
         fromTokenAddress,
         toTokenAddress,
         amount: amountWei,
-        walletAddress: computeAddress(PRIVATE_KEY),
+        walletAddress: computeAddress(privateKey),
         source: 'sdk-test'
     }
 
@@ -72,7 +75,7 @@ export async function swap(fromToken: "WETH" | "USDC", toToken: "WETH" | "USDC",
 
     // Retry loop with 30-second delays
     while (true) {
-        const isComplete = await checkOrderStatus(info);
+        const isComplete = await checkOrderStatus(info, sdk);
         if (isComplete) {
             break;
         }
@@ -85,7 +88,7 @@ export async function swap(fromToken: "WETH" | "USDC", toToken: "WETH" | "USDC",
 }
 
 // Retry mechanism with 30-second intervals
-const checkOrderStatus = async (info: OrderInfo): Promise<boolean> => {
+const checkOrderStatus = async (info: OrderInfo, sdk: FusionSDK): Promise<boolean> => {
     try {
         const data = await sdk.getOrderStatus(info.orderHash);
 

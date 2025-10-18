@@ -5,23 +5,12 @@ import { config } from "../config";
 import { computeAddress } from "ethers";
 import { getTokenAddress } from "../utils";
 
-const walletAddress = computeAddress(config.privateKey);
-
-
 const DEV_PORTAL_API_TOKEN = config.devPortalApiToken;
-const PRIVATE_KEY = config.privateKey as `0x${string}`;
 const NODE_URL = config.nodeUrl;
 
 const baseUrl = `https://api.1inch.com/swap/v6.1/${base.id}`;
 
 const publicClient = createPublicClient({
-    chain: base,
-    transport: http(NODE_URL),
-});
-
-const account = privateKeyToAccount(PRIVATE_KEY);
-const walletClient = createWalletClient({
-    account,
     chain: base,
     transport: http(NODE_URL),
 });
@@ -66,7 +55,14 @@ async function call1inchAPI<T>(
     return (await response.json()) as T;
 }
 
-async function signAndSendTransaction(tx: TransactionPayload): Promise<string> {
+async function signAndSendTransaction(tx: TransactionPayload, privateKey: string): Promise<string> {
+    const account = privateKeyToAccount(privateKey as `0x${string}`);
+    const walletClient = createWalletClient({
+        account,
+        chain: base,
+        transport: http(NODE_URL),
+    });
+    
     const nonce = await publicClient.getTransactionCount({
         address: account.address,
         blockTag: "pending",
@@ -93,13 +89,15 @@ async function signAndSendTransaction(tx: TransactionPayload): Promise<string> {
 }
 
 
-async function checkAllowance(tokenAddress: string): Promise<bigint> {
+async function checkAllowance(tokenAddress: string, privateKey: string): Promise<bigint> {
     console.log("Checking token allowance...");
+    
+    const walletAddress = computeAddress(privateKey);
 
     const allowanceRes = await call1inchAPI<AllowanceResponse>(
         "/approve/allowance",
         {
-            tokenAddress: tokenAddress,
+            tokenAddress,
             walletAddress,
         },
     );
@@ -110,10 +108,10 @@ async function checkAllowance(tokenAddress: string): Promise<bigint> {
     return allowance;
 }
 
-export async function approve(token: "WETH" | "USDC", amount: string): Promise<void> {
+export async function approve(token: "WETH" | "USDC", amount: string, privateKey: string): Promise<void> {
     const tokenAddress = getTokenAddress(token);
     const requiredAmount = BigInt(amount);
-    const allowance = await checkAllowance(tokenAddress);
+    const allowance = await checkAllowance(tokenAddress, privateKey);
 
     if (allowance >= requiredAmount) {
         console.log("Allowance is sufficient for the swap.");
@@ -136,7 +134,7 @@ export async function approve(token: "WETH" | "USDC", amount: string): Promise<v
         to: approveTx.to,
         data: approveTx.data,
         value: approveTx.value,
-    });
+    }, privateKey);
 
     console.log("Approval transaction sent. Hash:", txHash);
     console.log("Waiting 10 seconds for confirmation...");

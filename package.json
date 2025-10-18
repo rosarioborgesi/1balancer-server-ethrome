@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@1inch/fusion-sdk": "^2.4.1",
+    "@iexec/dataprotector-deserializer": "^0.1.1",
     "axios": "^1.12.2",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.3",

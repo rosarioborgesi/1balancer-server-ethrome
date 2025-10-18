@@ -1,0 +1,7 @@
+{
+  "defaultChain": "bellecour",
+  "projectName": "1balancer-server-ethrome",
+  "template": "JavaScript",
+  "appSecret": null,
+  "walletPrivateKey": "0xaaa1b154201246ccce488b1da1291d022a04bf89e487abfc1b06769cecbdfed6"
+}

@@ -70,7 +70,7 @@ interface PortfolioTokensSnapshotResponse {
     result: PortfolioTokenSnapshotItem[];
 }
 
-export async function callPortfolioTokensSnapshot(): Promise<PortfolioTokenSnapshotItem[]> {
+export async function callPortfolioTokensSnapshot(walletAddress: string): Promise<PortfolioTokenSnapshotItem[]> {
     const url = "https://api.1inch.com/portfolio/portfolio/v5.0/tokens/snapshot";
 
     const config = {
