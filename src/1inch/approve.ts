@@ -3,7 +3,7 @@ import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config";
 import { computeAddress } from "ethers";
-import { getTokenAddress } from "../utils.ts";
+import { getTokenAddress } from "../utils";
 
 const walletAddress = computeAddress(config.privateKey);
 
