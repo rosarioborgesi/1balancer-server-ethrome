@@ -9,7 +9,6 @@ const DEV_PORTAL_API_TOKEN = config.devPortalApiToken;
 
 //const AMOUNT = 60000000000000;
 
-
 const ethersRpcProvider = new JsonRpcProvider(NODE_URL)
 
 const ethersProviderConnector: Web3Like = {
@@ -85,7 +84,6 @@ export async function swap(fromToken: "WETH" | "USDC", toToken: "WETH" | "USDC",
     console.log('Order executed for', (Date.now() - start) / 1000, 'sec');
 }
 
-
 // Retry mechanism with 30-second intervals
 const checkOrderStatus = async (info: OrderInfo): Promise<boolean> => {
     try {
@@ -94,22 +92,22 @@ const checkOrderStatus = async (info: OrderInfo): Promise<boolean> => {
         if (data.status === OrderStatus.Filled) {
             //console.log('fills', data.fills);
             console.log("Order Filled with tx hash: ", data.fills[0].txHash);
-            return true; // Order completed successfully
+            return true; 
         }
 
         if (data.status === OrderStatus.Expired) {
             console.log('Order Expired');
-            return true; // Order completed (expired)
+            return true;
         }
 
         if (data.status === OrderStatus.Cancelled) {
             console.log('Order Cancelled');
-            return true; // Order completed (cancelled)
+            return true;
         }
 
-        return false; // Order still pending, continue checking
+        return false;
     } catch (e) {
         console.log(getAxiosErrorMessage(e));
-        return false; // Error occurred, retry after delay
+        return false;
     }
 };
