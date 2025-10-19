@@ -1,7 +1,7 @@
 import { FusionSDK, NetworkEnum, OrderInfo, OrderStatus, PrivateKeyProviderConnector, Web3Like, } from "@1inch/fusion-sdk";
 import { computeAddress, JsonRpcProvider } from "ethers";
-import { config } from "../config";
-import { getAxiosErrorMessage, getTokenAddress } from "../utils";
+import { config } from "../config.js";
+import { getAxiosErrorMessage, getTokenAddress } from "../utils.js";
 
 const NODE_URL = config.nodeUrl;
 const DEV_PORTAL_API_TOKEN = config.devPortalApiToken;

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { config } from "../config";
+import { config } from "../config.js";
 
 const DEV_PORTAL_API_TOKEN = config.devPortalApiToken;
 

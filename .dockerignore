@@ -1,0 +1,28 @@
+# iapp config file may contain secrets
+iapp.config.json
+
+# dependencies (will be reinstalled)
+node_modules
+
+# test directories
+input
+output
+mock
+
+# cache directory
+cache
+
+# git files
+.git
+.gitignore
+
+# environment files
+.env
+.env.local
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+README.md

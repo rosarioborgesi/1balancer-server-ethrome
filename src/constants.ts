@@ -5,13 +5,13 @@ export interface Token {
   }
   
   export const USDC_TOKEN: Token = {
-    address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    address: "0x75faf114eafb1BDEaC50eF6582f0F6C74d2A361c", // USDC on Arbitrum Sepolia
     symbol: "USDC",
     decimals: 6,
   }
   
   export const WETH_TOKEN: Token = {
-    address: "0x4200000000000000000000000000000000000006",
+    address: "0xE591bf4550f521D88537AbC3B2519d39bFFb62a0", // WETH on Arbitrum Sepolia
     symbol: "WETH",
     decimals: 18,
   }

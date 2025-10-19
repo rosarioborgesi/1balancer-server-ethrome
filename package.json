@@ -2,7 +2,8 @@
   "name": "1balancer-server-ethrome",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
     "watch": "tsx watch src/index.ts",
@@ -10,11 +11,8 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.12.3",
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.8.1",
     "tsx": "^4.20.6",
@@ -24,10 +22,12 @@
     "@1inch/fusion-sdk": "^2.4.1",
     "@iexec/dataprotector-deserializer": "^0.1.1",
     "axios": "^1.12.2",
+    "cors": "^2.8.5",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.3",
     "ethers": "^6.15.0",
     "express": "^5.1.0",
+    "iexec": "^8.20.0",
     "viem": "^2.38.3"
   }
 }

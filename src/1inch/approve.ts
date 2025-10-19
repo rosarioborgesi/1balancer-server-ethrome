@@ -1,9 +1,9 @@
 import { createPublicClient, createWalletClient, Hex, http } from "viem";
 import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { config } from "../config";
+import { config } from "../config.js";
 import { computeAddress } from "ethers";
-import { getTokenAddress } from "../utils";
+import { getTokenAddress } from "../utils.js";
 
 const DEV_PORTAL_API_TOKEN = config.devPortalApiToken;
 const NODE_URL = config.nodeUrl;

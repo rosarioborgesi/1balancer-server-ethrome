@@ -2,19 +2,14 @@ FROM node:22-alpine3.21
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
-COPY pnpm-lock.yaml* ./
 
-# Install pnpm and dependencies
-RUN npm install -g pnpm@10.12.3
-RUN pnpm install --frozen-lockfile
+RUN npm ci
 
-# Copy source code
 COPY . .
 
-# Build TypeScript
-RUN pnpm run build
+RUN npm run build
 
-# Set entry point
-ENTRYPOINT ["node", "dist/index.js"]
+RUN npm ci --only=production
+
+ENTRYPOINT ["node", "--disable-wasm-trap-handler", "/app/dist/index.js"]

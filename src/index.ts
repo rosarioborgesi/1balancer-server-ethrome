@@ -1,16 +1,34 @@
 import express, { Request, Response } from "express";
-import { config } from "./config";
-import { computeAddress } from "ethers";
-import { callPortfolioTokensSnapshot } from "./1inch/portfolio";
-import { swap } from "./1inch/swap";
-import { USDC_TOKEN, WETH_TOKEN } from "./constants";
-import { callTokenPriceInUsd } from "./1inch/price";
+import cors from "cors";
+import { config } from "./config.js";
+import { computeAddress, Wallet, JsonRpcProvider } from "ethers";
+import { callPortfolioTokensSnapshot } from "./1inch/portfolio.js";
+import { swap } from "./1inch/swap.js";
+import { USDC_TOKEN, WETH_TOKEN } from "./constants.js";
+import { callTokenPriceInUsd } from "./1inch/price.js";
 import Decimal from "decimal.js";
-import { approve } from "./1inch/approve";
+import { approve } from "./1inch/approve.js";
 import fs from "node:fs/promises";
 import { IExecDataProtectorDeserializer } from "@iexec/dataprotector-deserializer";
+import { IExec } from "iexec";
 
 const walletAddress = computeAddress(config.privateKey);
+
+// Strategy storage
+interface Strategy {
+  userId: string;
+  protectedDataAddress: string;
+  walletAddress: string;
+  createdAt: number;
+  lastTriggered?: number;
+  activeDealId?: string;
+  lastDealStatus?: 'pending' | 'running' | 'completed' | 'failed';
+}
+
+const strategies = new Map<string, Strategy>();
+
+// Track active deals to prevent duplicates
+const activeDeals = new Set<string>();
 
 // iExec batch mode function
 async function runIexecBatch() {
@@ -59,23 +77,238 @@ async function runIexecBatch() {
   return userPrivateKey;
 }
 
-// Express server mode
+// Trigger iExec worker for a strategy
+async function triggerIExecRebalance(strategy: Strategy): Promise<void> {
+  try {
+    if (!config.iexecAppAddress) {
+      console.error('IEXEC_APP_ADDRESS not configured, skipping iExec trigger');
+      return;
+    }
+
+    // Check if there's already an active deal for this user
+    if (activeDeals.has(strategy.userId)) {
+      console.log(`⏭️  Skipping user ${strategy.userId} - deal already in progress`);
+      return;
+    }
+
+    // Throttle: don't trigger more than once every 2 minutes per user
+    const now = Date.now();
+    const minInterval = 2 * 60 * 1000; // 2 minutes
+    if (strategy.lastTriggered && (now - strategy.lastTriggered) < minInterval) {
+      console.log(`⏭️  Skipping user ${strategy.userId} - triggered ${Math.floor((now - strategy.lastTriggered) / 1000)}s ago`);
+      return;
+    }
+
+    console.log(`Triggering iExec worker for user ${strategy.userId}`);
+    console.log(`Protected data address: ${strategy.protectedDataAddress}`);
+
+    // Mark as active
+    activeDeals.add(strategy.userId);
+    strategy.lastTriggered = now;
+    strategy.lastDealStatus = 'pending';
+
+    // Initialize ethers wallet and provider
+    const provider = new JsonRpcProvider(config.iexecRpcUrl);
+    const wallet = new Wallet(config.privateKey, provider);
+    
+    const iexec = new IExec(
+      {
+        ethProvider: wallet,
+      }
+    );
+
+    // Verify protected data exists and is accessible
+    try {
+      const dataset = await iexec.dataset.showDataset(strategy.protectedDataAddress);
+      console.log(`✅ Protected data verified: ${dataset.objAddress}`);
+    } catch (verifyError) {
+      console.error(`❌ Protected data not found or not accessible: ${strategy.protectedDataAddress}`);
+      throw new Error(`Protected data validation failed: ${verifyError}`);
+    }
+
+    // Create app order
+    const apporder = await iexec.order.createApporder({
+      app: config.iexecAppAddress,
+      appprice: 0,
+      volume: 1,
+    });
+    const signedApporder = await iexec.order.signApporder(apporder);
+
+    // Create dataset order (protected data)
+    const datasetorder = await iexec.order.createDatasetorder({
+      dataset: strategy.protectedDataAddress,
+      datasetprice: 0,
+      volume: 1,
+    });
+    const signedDatasetorder = await iexec.order.signDatasetorder(datasetorder);
+
+    // Create workerpool order
+    const workerpoolorder = await iexec.order.createWorkerpoolorder({
+      workerpool: config.iexecWorkerpoolAddress,
+      workerpoolprice: 0,
+      volume: 1,
+      category: 0,
+    });
+    const signedWorkerpoolorder = await iexec.order.signWorkerpoolorder(workerpoolorder);
+
+    // Create request order
+    const requestorder = await iexec.order.createRequestorder({
+      app: config.iexecAppAddress,
+      appmaxprice: 0,
+      dataset: strategy.protectedDataAddress,
+      datasetmaxprice: 0,
+      workerpool: config.iexecWorkerpoolAddress,
+      workerpoolmaxprice: 0,
+      requester: walletAddress,
+      volume: 1,
+      category: 0,
+      params: {
+        iexec_result_storage_provider: 'ipfs',
+        iexec_result_storage_proxy: 'https://result-proxy.bellecour.iex.ec',
+      },
+    });
+    const signedRequestorder = await iexec.order.signRequestorder(requestorder);
+
+    // Match orders to create deal
+    const { dealid, txHash } = await iexec.order.matchOrders({
+      apporder: signedApporder,
+      datasetorder: signedDatasetorder,
+      workerpoolorder: signedWorkerpoolorder,
+      requestorder: signedRequestorder,
+    });
+
+    console.log(`✅ iExec deal created for user ${strategy.userId}`);
+    console.log(`Deal ID: ${dealid}`);
+    console.log(`Transaction: ${txHash}`);
+
+    // Update strategy with deal info
+    strategy.activeDealId = dealid;
+    strategy.lastDealStatus = 'running';
+
+    // Remove from active deals after 10 minutes (task should complete by then)
+    setTimeout(() => {
+      activeDeals.delete(strategy.userId);
+      console.log(`⏰ Deal timeout - removing ${strategy.userId} from active deals`);
+    }, 10 * 60 * 1000); // 10 minutes
+
+  } catch (error) {
+    console.error(`❌ Failed to trigger iExec for user ${strategy.userId}:`, error);
+    // Remove from active deals on error
+    activeDeals.delete(strategy.userId);
+    strategy.lastDealStatus = 'failed';
+  }
+}
+
+// Express server mode with strategy management
 function startExpressServer() {
   const app = express();
+  app.use(cors());
+  app.use(express.json());
 
   app.get('/', (req: Request, res: Response) => {
-    res.send('Balancing server is running')
+    res.json({ 
+      status: 'running',
+      timestamp: new Date().toISOString(),
+      strategies: strategies.size,
+      activeDeals: activeDeals.size,
+      iexecConfigured: !!config.iexecAppAddress
+    });
   })
+
+  app.get('/health', (req: Request, res: Response) => {
+    res.json({ 
+      healthy: true,
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+    });
+  })
+
+  // Endpoint to receive strategy with protected data address
+  app.post('/strategy', (req: Request, res: Response): void => {
+    const { userId, protectedDataAddress, walletAddress: userWalletAddress } = req.body;
+    
+    if (!userId || !protectedDataAddress || !userWalletAddress) {
+      res.status(400).json({ 
+        error: 'Missing required fields: userId, protectedDataAddress, walletAddress' 
+      });
+      return;
+    }
+
+    const strategy: Strategy = {
+      userId,
+      protectedDataAddress,
+      walletAddress: userWalletAddress,
+      createdAt: Date.now(),
+    };
+
+    strategies.set(userId, strategy);
+    console.log(`✅ Strategy stored for user ${userId}`);
+    console.log(`Protected data: ${protectedDataAddress}`);
+    console.log(`Wallet: ${userWalletAddress}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Strategy stored successfully',
+      strategy 
+    });
+  });
+
+  // Endpoint to get all strategies
+  app.get('/strategies', (req: Request, res: Response) => {
+    const allStrategies = Array.from(strategies.values());
+    res.json({ strategies: allStrategies });
+  });
+
+  // Endpoint to manually trigger rebalancing for a user
+  app.post('/trigger/:userId', async (req: Request, res: Response): Promise<void> => {
+    const { userId } = req.params;
+    const strategy = strategies.get(userId);
+
+    if (!strategy) {
+      res.status(404).json({ error: `No strategy found for user ${userId}` });
+      return;
+    }
+
+    await triggerIExecRebalance(strategy);
+    res.json({ success: true, message: 'iExec rebalancing triggered' });
+  });
 
   app.listen(config.port, () => {
     console.log(`${new Date().toISOString()} Server listening on port ${config.port}`);
     console.log(`Rebalancing interval: ${config.rebalancingInterval} ms`);
-    console.log(`Wallet address: ${walletAddress}`);
+    console.log(`Server wallet address: ${walletAddress}`);
+    console.log(`iExec app address: ${config.iexecAppAddress || 'NOT CONFIGURED'}`);
 
+    // Cron job to check and trigger rebalancing for all strategies
     setInterval(async () => {
-      console.log(`${new Date().toISOString()} Starting process`);
-      await rebalance(config.privateKey);
-      console.log(`${new Date().toISOString()} Ending process`);
+      try {
+        const timestamp = new Date().toISOString();
+        console.log(`${timestamp} Checking strategies for rebalancing...`);
+        
+        const allStrategies = Array.from(strategies.values());
+        
+        if (allStrategies.length === 0) {
+          console.log('No strategies to process');
+          return;
+        }
+
+        console.log(`Found ${allStrategies.length} strategy(ies) to process`);
+        console.log(`Active deals: ${activeDeals.size}`);
+        
+        for (const strategy of allStrategies) {
+          try {
+            await triggerIExecRebalance(strategy);
+          } catch (strategyError) {
+            console.error(`Error processing strategy for ${strategy.userId}:`, strategyError);
+            // Continue with next strategy even if one fails
+          }
+        }
+        
+        console.log(`${new Date().toISOString()} Completed rebalancing check`);
+      } catch (cronError) {
+        console.error('Critical error in cron job:', cronError);
+        // Don't crash the server, just log and continue
+      }
     }, config.rebalancingInterval)
   })
 }

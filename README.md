@@ -1,28 +1,55 @@
 # 1Balancer Server - ETH Rome 2025
 
-An automated portfolio rebalancing server built for **ETH Rome 2025** that maintains optimal asset allocation using 1inch APIs.
+An automated portfolio rebalancing server built for **ETH Rome 2025** that maintains optimal asset allocation using 1inch APIs and iExec TEE (Trusted Execution Environment) for secure private key handling.
 
 ## 🎯 Project Overview
 
-This project demonstrates automated DeFi portfolio management by continuously rebalancing a portfolio between WETH and USDC tokens to maintain a 50/50 allocation. The server monitors portfolio composition and executes swaps when the balance deviates beyond a configurable threshold.
+This project demonstrates automated DeFi portfolio management with privacy-preserving execution:
+- Frontend encrypts user's private key using iExec DataProtector
+- Express server runs continuously, receiving encrypted strategy data
+- Server triggers iExec TEE workers to execute rebalancing in secure hardware enclaves
+- TEE workers decrypt private keys, execute swaps, all within protected hardware
 
 ## 🚀 Features
 
+- **Hybrid Architecture**: Express server + iExec TEE workers
+- **Privacy-Preserving**: Private keys never exposed to server, only decrypted in TEE
 - **Automated Rebalancing**: Continuously monitors and rebalances WETH/USDC portfolio
 - **1inch Integration**: Leverages 1inch Fusion SDK for optimal swap execution
 - **Configurable Thresholds**: Adjustable rebalancing triggers and intervals
-- **Real-time Monitoring**: Live portfolio tracking and swap execution
-- **Express API**: RESTful endpoints for monitoring and control
+- **Strategy Management**: RESTful API for receiving and managing user strategies
+- **iExec Integration**: Programmatic TEE worker triggering
 
 ## 🏗️ Architecture
 
-The server operates on a simple but effective principle:
+### Hybrid Express + iExec TEE Architecture
 
-1. **Portfolio Snapshot**: Fetches current token balances and USD values
-2. **Balance Analysis**: Calculates deviation from target 50/50 allocation
-3. **Threshold Check**: Determines if rebalancing is needed based on configurable offset
-4. **Swap Execution**: Executes optimal swaps via 1inch Fusion API
-5. **Status Monitoring**: Tracks order execution and completion
+The system operates in two modes simultaneously:
+
+**Express Server (Continuous)**:
+- Receives encrypted strategy data from frontend via `/strategy` endpoint
+- Stores strategy information (user ID, protected data address, wallet)
+- Runs cron job checking strategies at configured intervals
+- Triggers iExec TEE workers for secure rebalancing
+
+**iExec TEE Worker (On-Demand)**:
+- Triggered by Express server for each strategy
+- Runs in Trusted Execution Environment (Intel SGX/AMD SEV)
+- Deserializes protected data (decrypts private key within TEE)
+- Executes rebalancing logic securely
+- Private key never leaves the secure enclave
+
+### Complete Flow
+
+1. **Frontend**: User enters private key → Encrypted with iExec DataProtector → Stored on blockchain
+2. **Frontend**: Grants server wallet access to encrypted data via blockchain ACL
+3. **Frontend**: Sends protected data address to Express server
+4. **Express Server**: Stores strategy in memory
+5. **Cron Job**: Periodically checks all strategies
+6. **Express Server**: Triggers iExec worker with protected data address
+7. **iExec**: Creates deal, matches orders, starts TEE execution
+8. **TEE Worker**: Decrypts private key, analyzes portfolio, executes swaps
+9. **Result**: Portfolio rebalanced, private key never exposed
 
 ## 📋 Prerequisites
 
